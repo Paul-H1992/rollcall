@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智慧课堂 - 学生端</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f7; color: #333; min-height: 100vh; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 16px; margin-bottom: 20px; text-align: center; }
+        .header h1 { font-size: 20px; margin-bottom: 5px; }
+        .card { background: white; border-radius: 16px; padding: 20px; margin-bottom: 15px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+        .card-title { font-size: 14px; color: #666; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; }
+        .current-answerer { font-size: 36px; font-weight: bold; text-align: center; color: #667eea; margin: 15px 0; }
+        .current-asker { font-size: 18px; text-align: center; color: #666; margin-bottom: 15px; }
+        .timer { font-size: 64px; font-weight: bold; text-align: center; color: #333; margin: 20px 0; }
+        .task-content { background: #fff9db; border-radius: 12px; padding: 20px; margin-bottom: 15px; font-size: 16px; line-height: 1.6; }
+        .task-deadline { font-size: 12px; color: #ff6b6b; margin-top: 10px; }
+        .btn { width: 100%; padding: 15px; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s; }
+        .btn-done { background: linear-gradient(135deg, #2ed573 0%, #26ab5f 100%); color: white; }
+        .btn-done:disabled { background: #ccc; cursor: not-allowed; }
+        .feedback-status { text-align: center; padding: 15px; background: #dff9fb; border-radius: 10px; color: #22a6b3; font-weight: 500; }
+        .empty { text-align: center; padding: 40px; color: #999; }
+        .notification-btn { background: #667eea; color: white; margin-bottom: 15px; }
+        .notification-btn:hover { background: #5a6fd6; }
+        .notification-granted { background: #2ed573; }
+        @media (max-width: 480px) { .container { padding: 10px; } .current-answerer { font-size: 28px; } .timer { font-size: 48px; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>智慧课堂</h1>
+            <div>学生端</div>
+        </div>
+        
+        <button class="btn notification-btn" id="notif-btn" onclick="requestNotification()">开启消息通知</button>
+        
+        <div class="card" id="call-card">
+            <div class="card-title">当前互动</div>
+            <div id="call-status">
+                <div class="empty">暂无进行中的点名</div>
+            </div>
+        </div>
+        
+        <div class="card" id="task-card">
+            <div class="card-title">课堂任务</div>
+            <div id="task-status">
+                <div class="empty">暂无进行中的任务</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const API = '';
+        let currentTask = null;
+        let hasFeedback = false;
+        let notificationGranted = false;
+        let studentId = localStorage.getItem('rollcall_student_id') || '';
+        
+        // 检查通知权限
+        if ('Notification' in window) {
+            if (Notification.permission === 'granted') {
+                notificationGranted = true;
+                updateNotifBtn();
+            }
+        }
+        
+        function updateNotifBtn() {
+            const btn = document.getElementById('notif-btn');
+            if (notificationGranted) {
+                btn.textContent = '🔔 消息通知已开启';
+                btn.classList.add('notification-granted');
+            }
+        }
+        
+        function requestNotification() {
+            if (!('Notification' in window)) {
+                alert('您的浏览器不支持通知功能');
+                return;
+            }
+            Notification.requestPermission().then(permission => {
+                notificationGranted = permission === 'granted';
+                updateNotifBtn();
+                if (notificationGranted) {
+                    showNotification('通知已开启', '您将收到课堂任务提醒');
+                }
+            });
+        }
+        
+        function showNotification(title, body) {
+            if (notificationGranted && 'Notification' in window) {
+                try {
+                    const notif = new Notification(title, {
+                        body: body,
+                        tag: 'rollcall-notify'
+                    });
+                    notif.onclick = () => { window.focus(); notif.close(); };
+                    setTimeout(() => notif.close(), 10000);
+                } catch (e) {}
+            }
+        }
+        
+        async function fetchState() {
+            try {
+                const res = await fetch(API + '/api/call/state');
+                const data = await res.json();
+                renderCallState(data);
+            } catch (e) {}
+        }
+        
+        function renderCallState(data) {
+            const status = document.getElementById('call-status');
+            if (!data.active || !data.record) {
+                status.innerHTML = '<div class="empty">暂无进行中的点名</div>';
+                return;
+            }
+            const record = data.record;
+            const answerers = data.answerers || [];
+            const askersMap = data.askers_map || {};
+            const askers = data.askers || [];
+            const modeText = record.mode === 'multi_one' ? '多人问答' : '多对一';
+            
+            // 当前学生是否被点名
+            const myName = localStorage.getItem('rollcall_student_id') || '';
+            const isAnswerer = answerers.some(a => a.name === myName || a.student_no === myName);
+            const isAsker = askers.some(a => a.name === myName || a.student_no === myName);
+            
+            // 显示回答者名字
+            let answerersHtml = answerers.length > 0 
+                ? answerers.map(a => {
+                    const isMe = (a.name === myName || a.student_no === myName);
+                    const style = isMe ? 'background:#ff6b6b;' : 'background:#667eea;';
+                    return '<span style="display:inline-block;' + style + 'color:white;padding:8px 16px;border-radius:20px;margin:5px;font-size:14px;">' + a.name + (isMe ? ' (你)' : '') + '</span>';
+                }).join('')
+                : '<span style="color:#999;">等待点名...</span>';
+            
+            // 多对一模式显示提问者
+            let askersHtml = '';
+            if (record.mode === 'multi_multi' && askers.length > 0) {
+                askersHtml = '<div style="margin-top:15px;"><strong>提问者:</strong></div>';
+                askersHtml += '<div style="margin-top:5px;">';
+                for (const [idx, ids] of Object.entries(askersMap)) {
+                    const askerNames = ids.map(id => {
+                        const student = askers.find(a => a.id === id);
+                        return student ? student.name : '';
+                    }).filter(n => n);
+                    const isMyGroup = ids.some(id => {
+                        const student = askers.find(a => a.id === id);
+                        return student && (student.name === myName || student.student_no === myName);
+                    });
+                    askersHtml += '<div style="margin:5px 0;' + (isMyGroup ? 'font-weight:bold;color:#667eea;' : '') + '">第' + (parseInt(idx)+1) + '组: ' + askerNames.join(', ') + (isMyGroup ? ' (你在这个组)' : '') + '</div>';
+                }
+                askersHtml += '</div>';
+            }
+            
+            let roleHtml = '';
+            if (isAnswerer) {
+                roleHtml = '<div style="background:#fff3cd;padding:10px;border-radius:10px;margin-top:15px;font-weight:bold;color:#856404;">轮到你回答问题！</div>';
+            } else if (isAsker) {
+                roleHtml = '<div style="background:#d1ecf1;padding:10px;border-radius:10px;margin-top:15px;font-weight:bold;color:#0c5460;">轮到你提问！</div>';
+            }
+            
+            let html = '<div style="text-align:center;">';
+            html += '<div style="font-weight:bold; color:#667eea; font-size:18px;">' + modeText + '</div>';
+            html += '<div style="font-size:12px; color:#999; margin-top:5px;">' + new Date(record.created_at).toLocaleString('zh-CN') + '</div>';
+            html += '<div style="margin-top:15px;"><strong>被点名回答的同学:</strong></div>';
+            html += '<div style="margin-top:10px;">' + answerersHtml + '</div>';
+            html += askersHtml;
+            html += roleHtml;
+            html += '</div>';
+            status.innerHTML = html;
+        }
+        
+        async function fetchTasks() {
+            try {
+                const res = await fetch(API + '/api/tasks');
+                const tasks = await res.json();
+                if (tasks.length > 0) {
+                    const newTask = tasks[0];
+                    // 检查是否是新任务
+                    if (currentTask && currentTask.id !== newTask.id) {
+                        showNotification('新任务发布', newTask.content.substring(0, 50));
+                    }
+                    currentTask = newTask;
+                    renderTask(currentTask);
+                }
+            } catch (e) {}
+        }
+        
+        function renderTask(task) {
+            const status = document.getElementById('task-status');
+            let html = '<div class="task-content">' + task.content;
+            if (task.deadline) {
+                html += '<div class="task-deadline">截止: ' + task.deadline + '</div>';
+            }
+            html += '</div>';
+            
+            if (hasFeedback) {
+                html += '<div class="feedback-status">已提交完成 ✓</div>';
+            } else {
+                html += '<button class="btn btn-done" onclick="submitFeedback()">我已完成任务</button>';
+            }
+            status.innerHTML = html;
+        }
+        
+        async function submitFeedback() {
+            if (!currentTask) return;
+            
+            // 如果没有保存学号，提示输入
+            if (!studentId) {
+                const entered = prompt('请输入你的学号或姓名:');
+                if (!entered) return;
+                studentId = entered.trim();
+                localStorage.setItem('rollcall_student_id', studentId);
+            }
+            
+            try {
+                const formData = new URLSearchParams();
+                formData.append('student_id', studentId);
+                const res = await fetch(API + '/api/tasks/' + currentTask.id + '/feedback', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: formData
+                });
+                const data = await res.json();
+                hasFeedback = true;
+                showNotification('提交成功', '老师已收到你的完成反馈');
+                renderTask(currentTask);
+            } catch (e) {
+                alert('提交失败，请重试');
+            }
+        }
+        
+        // 轮询更新（每3秒）
+        setInterval(() => { fetchState(); fetchTasks(); pollNotifications(); }, 3000);
+        fetchState();
+        fetchTasks();
+        
+        // 轮询通知（检查新任务新点名）
+        async function pollNotifications() {
+            try {
+                const res = await fetch(API + '/api/notifications');
+                const data = await res.json();
+                if (data.notifications && data.notifications.length > 0) {
+                    data.notifications.forEach(n => {
+                        if (n.type === 'new_task') {
+                            showNotification('新任务', n.payload.task?.content?.substring(0, 30) || '新任务');currentTask = n.payload.task;
+                            renderTask(currentTask);
+                        } else if (n.type === 'call_started') {
+                            showNotification('点名开始', '老师发起了一个新互动');
+                        }
+                    });
+                    // 清空已读通知
+                    fetch(API + '/api/notifications/clear', { method: 'POST' });
+                }
+            } catch (e) {}
+        }
+    </script>
+</body>
+</html>
