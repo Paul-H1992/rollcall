@@ -128,6 +128,15 @@ def init_db():
             key TEXT PRIMARY KEY,
             value TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS stages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            tags TEXT DEFAULT '',
+            level TEXT DEFAULT '',
+            sort_order INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
     ''')
     conn.commit()
     conn.close()
@@ -537,66 +546,158 @@ def delete_question(question_id):
     conn.close()
     return jsonify({'message': 'deleted'})
 
+# ==================== 阶段管理 ====================
+
+DEFAULT_STAGES = [
+    {"name": "大模型开发入门", "tags": "Ollama,Python调用API,Streamlit", "level": "基础认知"},
+    {"name": "Python语言进阶", "tags": "面向对象,网络编程,闭包/装饰器", "level": "基础认知"},
+    {"name": "数据处理与统计分析", "tags": "Pandas,MySQL,数据可视化", "level": "基础认知"},
+    {"name": "机器学习基础", "tags": "KNN,线性回归,决策树,集成学习", "level": "基础认知"},
+    {"name": "深度学习基础", "tags": "神经网络,反向传播,Pytorch,CNN/RNN", "level": "原理剖析"},
+    {"name": "NLP自然语言处理基础", "tags": "Transformer,BERT,迁移学习", "level": "原理剖析"},
+    {"name": "文本分类与模型优化", "tags": "FastText,BERT微调,量化/剪枝", "level": "原理剖析"},
+    {"name": "RAG检索增强生成", "tags": "LangChain,向量数据库,RAG系统", "level": "原理剖析"},
+    {"name": "Agent智能体开发", "tags": "Dify,CrewAI,智能体机制", "level": "场景应用"},
+    {"name": "大模型微调", "tags": "LoRA,P-Tuning,医疗问答", "level": "场景应用"},
+    {"name": "企业级大模型平台", "tags": "阿里PAI,虚拟试衣,Diffusion", "level": "场景应用"},
+    {"name": "知识图谱与问答系统", "tags": "Neo4j,NER,关系抽取", "level": "场景应用"},
+    {"name": "NLP高级实战", "tags": "BERT+BiLSTM+CRF,API部署", "level": "架构与拓展"},
+    {"name": "模型部署", "tags": "Flask,Gradio,Docker容器化", "level": "架构与拓展"},
+    {"name": "图像分析与计算机视觉", "tags": "ResNet,Unet,多模态基础", "level": "架构与拓展"},
+    {"name": "多模态大模型（AIGC）", "tags": "Stable Diffusion,CLIP,图像生成", "level": "架构与拓展"},
+]
+
+def init_default_stages():
+    """初始化默认阶段（如果数据库为空）"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) FROM stages')
+    count = cursor.fetchone()[0]
+    if count == 0:
+        for i, s in enumerate(DEFAULT_STAGES):
+            cursor.execute(
+                'INSERT INTO stages (name, tags, level, sort_order) VALUES (?, ?, ?, ?)',
+                (s['name'], s['tags'], s['level'], i + 1)
+            )
+        conn.commit()
+    conn.close()
+
 @app.route('/api/stages', methods=['GET'])
 def get_stages():
-    """返回16阶段课程体系"""
-    stages = {
-        1: {"name": "大模型开发入门", "tags": ["Ollama", "Python调用API", "Streamlit"], "level": "基础认知"},
-        2: {"name": "Python语言进阶", "tags": ["面向对象", "网络编程", "闭包/装饰器"], "level": "基础认知"},
-        3: {"name": "数据处理与统计分析", "tags": ["Pandas", "MySQL", "数据可视化"], "level": "基础认知"},
-        4: {"name": "机器学习基础", "tags": ["KNN", "线性回归", "决策树", "集成学习"], "level": "基础认知"},
-        5: {"name": "深度学习基础", "tags": ["神经网络", "反向传播", "Pytorch", "CNN/RNN"], "level": "原理剖析"},
-        6: {"name": "NLP自然语言处理基础", "tags": ["Transformer", "BERT", "迁移学习"], "level": "原理剖析"},
-        7: {"name": "文本分类与模型优化", "tags": ["FastText", "BERT微调", "量化/剪枝"], "level": "原理剖析"},
-        8: {"name": "RAG检索增强生成", "tags": ["LangChain", "向量数据库", "RAG系统"], "level": "原理剖析"},
-        9: {"name": "Agent智能体开发", "tags": ["Dify", "CrewAI", "智能体机制"], "level": "场景应用"},
-        10: {"name": "大模型微调", "tags": ["LoRA", "P-Tuning", "医疗问答"], "level": "场景应用"},
-        11: {"name": "企业级大模型平台", "tags": ["阿里PAI", "虚拟试衣", "Diffusion"], "level": "场景应用"},
-        12: {"name": "知识图谱与问答系统", "tags": ["Neo4j", "NER", "关系抽取"], "level": "场景应用"},
-        13: {"name": "NLP高级实战", "tags": ["BERT+BiLSTM+CRF", "API部署"], "level": "架构与拓展"},
-        14: {"name": "模型部署", "tags": ["Flask", "Gradio", "Docker容器化", "模型服务封装"], "level": "架构与拓展"},
-        15: {"name": "图像分析与计算机视觉", "tags": ["ResNet", "Unet", "多模态基础"], "level": "架构与拓展"},
-        16: {"name": "多模态大模型（AIGC）", "tags": ["Stable Diffusion", "CLIP", "图像生成"], "level": "架构与拓展"},
-    }
+    """返回所有阶段（从数据库读取）"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM stages ORDER BY sort_order, id')
+    stages = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    if not stages:
+        init_default_stages()
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM stages ORDER BY sort_order, id')
+        stages = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+    return jsonify(stages)
+
+@app.route('/api/stages', methods=['POST'])
+def create_stage():
+    """创建新阶段"""
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT MAX(sort_order) FROM stages')
+    max_order = cursor.fetchone()[0] or 0
+    cursor.execute(
+        'INSERT INTO stages (name, tags, level, sort_order) VALUES (?, ?, ?, ?)',
+        (data['name'], data.get('tags', ''), data.get('level', ''), max_order + 1)
+    )
+    stage_id = cursor.lastrowid
+    conn.commit()
+    cursor.execute('SELECT * FROM stages WHERE id=?', (stage_id,))
+    stage = dict(cursor.fetchone())
+    conn.close()
+    return jsonify(stage), 201
+
+@app.route('/api/stages/<int:stage_id>', methods=['PUT'])
+def update_stage(stage_id):
+    """更新阶段"""
+    data = request.json
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        'UPDATE stages SET name=?, tags=?, level=?, sort_order=? WHERE id=?',
+        (data['name'], data.get('tags', ''), data.get('level', ''), data.get('sort_order', 0), stage_id)
+    )
+    conn.commit()
+    cursor.execute('SELECT * FROM stages WHERE id=?', (stage_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return jsonify({'error': 'Stage not found'}), 404
+    return jsonify(dict(row))
+
+@app.route('/api/stages/<int:stage_id>', methods=['DELETE'])
+def delete_stage(stage_id):
+    """删除阶段"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM stages WHERE id=?', (stage_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'deleted'})
+
+@app.route('/api/stages/reset', methods=['POST'])
+def reset_stages():
+    """重置为默认16阶段"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM stages')
+    for i, s in enumerate(DEFAULT_STAGES):
+        cursor.execute(
+            'INSERT INTO stages (name, tags, level, sort_order) VALUES (?, ?, ?, ?)',
+            (s['name'], s['tags'], s['level'], i + 1)
+        )
+    conn.commit()
+    cursor.execute('SELECT * FROM stages ORDER BY sort_order')
+    stages = [dict(row) for row in cursor.fetchall()]
+    conn.close()
     return jsonify(stages)
 
 @app.route('/api/questions/generate', methods=['POST'])
 def generate_question():
     """AI生成面试题（需配置API Key）"""
     data = request.json
-    stage = data.get('stage', 1)
+    stage_id = data.get('stage', 1)
     tags = data.get('tags', '')
     
-    # 16阶段课程体系
-    stages = {
-        1: {"name": "大模型开发入门", "level": "基础认知"},
-        2: {"name": "Python语言进阶", "level": "基础认知"},
-        3: {"name": "数据处理与统计分析", "level": "基础认知"},
-        4: {"name": "机器学习基础", "level": "基础认知"},
-        5: {"name": "深度学习基础", "level": "原理剖析"},
-        6: {"name": "NLP自然语言处理基础", "level": "原理剖析"},
-        7: {"name": "文本分类与模型优化", "level": "原理剖析"},
-        8: {"name": "RAG检索增强生成", "level": "原理剖析"},
-        9: {"name": "Agent智能体开发", "level": "场景应用"},
-        10: {"name": "大模型微调", "level": "场景应用"},
-        11: {"name": "企业级大模型平台", "level": "场景应用"},
-        12: {"name": "知识图谱与问答系统", "level": "场景应用"},
-        13: {"name": "NLP高级实战", "level": "架构与拓展"},
-        14: {"name": "模型部署", "level": "架构与拓展"},
-        15: {"name": "图像分析与计算机视觉", "level": "架构与拓展"},
-        16: {"name": "多模态大模型（AIGC）", "level": "架构与拓展"},
-    }
+    # 从数据库读取阶段
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM stages ORDER BY sort_order, id')
+    stages = [dict(row) for row in cursor.fetchall()]
+    conn.close()
     
-    stage_info = stages.get(stage, stages[1])
+    if not stages:
+        init_default_stages()
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM stages ORDER BY sort_order, id')
+        stages = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+    
+    # 根据ID找，没有就用第一个
+    stage_info = next((s for s in stages if s['id'] == stage_id), stages[0])
+    stage_name = stage_info['name']
     
     # TODO: 接入MiniMax API时替换此处
     # 目前返回示例题目，实际使用时调用AI API
     question = {
-        "content": f"请简述{stage_info['name']}的核心原理，并说明在实际项目中的应用场景。",
+        "content": f"请简述{stage_name}的核心原理，并说明在实际项目中的应用场景。",
         "answer": f"【参考答案要点】\n1. 核心原理（30%）\n2. 关键步骤（30%）\n3. 实际应用场景（40%）",
         "criteria": f"1. 理解正确 - 30%\n2. 表达清晰 - 30%\n3. 有实践经验 - 40%",
         "time_limit": 120,
-        "stage": stage,
+        "stage": stage_id,
+        "stage_name": stage_name,
         "tags": tags,
         "is_ai_generated": True
     }
@@ -972,4 +1073,5 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=8080)
     args = parser.parse_args()
     init_db()
+    init_default_stages()
     run_server(args.port)

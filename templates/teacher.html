@@ -153,6 +153,7 @@
                 <button class="btn btn-primary" onclick="showAddQuestionModal()">+ 添加题目</button>
                 <button class="btn btn-secondary" onclick="refreshQuestions()">刷新</button>
                 <button class="btn btn-secondary" onclick="exportCSV()">导出CSV</button>
+                <button class="btn btn-secondary" onclick="refreshStages(); showModal('modal-add-stage')">管理阶段</button>
             </div>
             <table><thead><tr><th>题目内容</th><th>阶段</th><th>知识点</th><th>操作</th></tr></thead><tbody id="questions-table"></tbody></table>
         </div>
@@ -182,7 +183,8 @@
     </div>
     <div class="modal" id="modal-add-student"><div class="modal-content"><div class="modal-header">添加学生</div><div class="form-group"><label>姓名</label><input type="text" id="add-student-name" placeholder="输入学生姓名"></div><div class="form-group"><label>学号</label><input type="text" id="add-student-no" placeholder="输入学号"></div><div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('modal-add-student')">取消</button><button class="btn btn-primary" onclick="addStudent()">添加</button></div></div></div>
     <div class="modal" id="modal-import"><div class="modal-content"><div class="modal-header">批量导入</div><div class="form-group"><label>粘贴学生信息</label><textarea id="import-data" rows="10" placeholder="张三,10001&#10;李四,10002"></textarea></div><div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('modal-import')">取消</button><button class="btn btn-primary" onclick="importStudents()">导入</button></div></div></div>
-    <div class="modal" id="modal-add-question"><div class="modal-content"><div class="modal-header">添加题目</div><div class="form-group"><label>题目内容</label><textarea id="add-question-content" rows="3"></textarea></div><div class="form-row"><div class="form-group"><label>参考答案</label><input type="text" id="add-question-answer"></div><div class="form-group"><label>用时(秒)</label><input type="number" id="add-question-time" value="60"></div></div><div class="form-row"><div class="form-group"><label>阶段</label><input type="number" id="add-question-stage" min="1" max="16"></div><div class="form-group"><label>知识点</label><input type="text" id="add-question-tags"></div></div><div class="form-group"><label>评分要点</label><textarea id="add-question-criteria" rows="2"></textarea></div><div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('modal-add-question')">取消</button><button class="btn btn-primary" onclick="addQuestion()">添加</button></div></div></div>
+    <div class="modal" id="modal-add-stage"><div class="modal-content"><div class="modal-header">管理阶段</div><div id="stages-list" style="max-height:300px;overflow-y:auto;margin-bottom:15px;"></div><div style="border-top:1px solid #eee;padding-top:15px;"><h4 style="margin-bottom:10px;">添加新阶段</h4><div class="form-group"><label>阶段名称</label><input type="text" id="add-stage-name" placeholder="例如: Python基础"></div><div class="form-group"><label>知识点(逗号分隔)</label><input type="text" id="add-stage-tags" placeholder="例如: 变量,循环,函数"></div><div class="form-group"><label>难度级别</label><input type="text" id="add-stage-level" placeholder="例如: 入门/进阶/高级"></div></div><div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('modal-add-stage')">关闭</button><button class="btn btn-primary" onclick="addStage()">添加阶段</button> <button class="btn btn-warning" onclick="resetStages()">重置默认</button></div></div></div>
+    <div class="modal" id="modal-add-question"><div class="modal-content"><div class="modal-header">添加题目</div><div class="form-group"><label>题目内容</label><textarea id="add-question-content" rows="3"></textarea></div><div class="form-row"><div class="form-group"><label>参考答案</label><input type="text" id="add-question-answer"></div><div class="form-group"><label>用时(秒)</label><input type="number" id="add-question-time" value="60"></div></div><div class="form-row"><div class="form-group"><label>阶段</label><select id="add-question-stage"></select></div><div class="form-group"><label>知识点</label><input type="text" id="add-question-tags"></div></div><div class="form-group"><label>评分要点</label><textarea id="add-question-criteria" rows="2"></textarea></div><div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('modal-add-question')">取消</button><button class="btn btn-primary" onclick="addQuestion()">添加</button></div></div></div>
     <div class="toast" id="toast"></div>
     <script>
         const API = '';
@@ -194,9 +196,9 @@
         let currentAnswererIdx = 0;
         let currentAskerIdx = 0;
         let generatedQuestion = null;
-        const stages = {1:{name:'大模型开发入门',tags:['Ollama','Python调用API','Streamlit']},2:{name:'Python语言进阶',tags:['面向对象','网络编程','闭包/装饰器']},3:{name:'数据处理与统计分析',tags:['Pandas','MySQL','数据可视化']},4:{name:'机器学习基础',tags:['KNN','线性回归','决策树','集成学习']},5:{name:'深度学习基础',tags:['神经网络','反向传播','Pytorch','CNN/RNN']},6:{name:'NLP自然语言处理基础',tags:['Transformer','BERT','迁移学习']},7:{name:'文本分类与模型优化',tags:['FastText','BERT微调','量化/剪枝']},8:{name:'RAG检索增强生成',tags:['LangChain','向量数据库','RAG系统']},9:{name:'Agent智能体开发',tags:['Dify','CrewAI','智能体机制']},10:{name:'大模型微调',tags:['LoRA','P-Tuning','医疗问答']},11:{name:'企业级大模型平台',tags:['阿里PAI','虚拟试衣','Diffusion']},12:{name:'知识图谱与问答系统',tags:['Neo4j','NER','关系抽取']},13:{name:'NLP高级实战',tags:['BERT+BiLSTM+CRF','API部署']},14:{name:'模型部署',tags:['Flask','Gradio','Docker容器化']},15:{name:'图像分析与计算机视觉',tags:['ResNet','Unet','多模态基础']},16:{name:'多模态大模型（AIGC）',tags:['Stable Diffusion','CLIP','图像生成']}};
+        let stages = [];  // 从API加载
         
-        document.addEventListener('DOMContentLoaded', () => { initTabs(); refreshStats(); refreshStudents(); refreshQuestions(); loadStages(); refreshTasks(); setInterval(refreshTasks, 3000); fetchLocalIP(); });
+        document.addEventListener('DOMContentLoaded', () => { initTabs(); refreshStats(); refreshStudents(); refreshQuestions(); refreshStages(); refreshTasks(); setInterval(refreshTasks, 3000); fetchLocalIP(); });
         function initTabs() { document.querySelectorAll('.tab').forEach(tab => { tab.addEventListener('click', () => { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); document.querySelectorAll('.panel').forEach(p => p.classList.remove('active')); tab.classList.add('active'); document.getElementById('panel-' + tab.dataset.tab).classList.add('active'); }); }); }
         function showToast(message, type = 'info') { const toast = document.getElementById('toast'); toast.textContent = message; toast.className = 'toast show ' + type; setTimeout(() => toast.classList.remove('show'), 3000); }
         function showModal(id) { document.getElementById(id).classList.add('active'); }
@@ -222,7 +224,13 @@
         function skipAsker() { nextStep(); }
         function skipAnswerer() { if (!currentCall) return; currentAnswererIdx++; currentAskerIdx = 0; if (currentAnswererIdx >= currentCall.answerers.length) { endInteraction(); return; } updateCurrentDisplay(); startTimer(60); }
         async function endInteraction() { clearInterval(timerInterval); document.getElementById('interaction-panel').classList.add('hidden'); if (currentCall && currentCall.answerers) { await fetch(API + '/api/call/cooldown', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answerer_ids: currentCall.answerers.map(a => a.id), days: 3 }) }); } await fetch(API + '/api/call/end', { method: 'POST' }); currentCall = null; document.getElementById('call-results').style.display = 'none'; refreshStats(); refreshStudents(); showToast('本轮结束', 'success'); }
-        async function refreshQuestions() { try { const res = await fetch(API + '/api/questions'); const questions = await res.json(); document.getElementById('questions-table').innerHTML = questions.map(q => '<tr><td>' + (q.content||'').substring(0,50) + '</td><td>' + (q.stage||'-') + '</td><td>' + (q.tags||'-') + '</td><td><button class="btn btn-danger" onclick="deleteQuestion(\'' + q.id + '\')" style="padding:5px 10px;font-size:12px;">删除</button></td></tr>').join(''); } catch (e) {} }
+        async function refreshQuestions() { 
+            try { 
+                const res = await fetch(API + '/api/questions'); 
+                const questions = await res.json(); 
+                document.getElementById('questions-table').innerHTML = questions.map(q => '<tr><td>' + (q.content||'').substring(0,50) + '</td><td>' + (q.stage_name || q.stage || '-') + '</td><td>' + (q.tags||'-') + '</td><td><button class="btn btn-danger" onclick="deleteQuestion(\'' + q.id + '\')" style="padding:5px 10px;font-size:12px;">删除</button></td></tr>').join(''); 
+            } catch (e) {} 
+        }
         function showAddQuestionModal() { showModal('modal-add-question'); }
         async function addQuestion() { const content = document.getElementById('add-question-content').value.trim(); const answer = document.getElementById('add-question-answer').value.trim(); const time_limit = parseInt(document.getElementById('add-question-time').value) || 60; const stage = parseInt(document.getElementById('add-question-stage').value) || null; const tags = document.getElementById('add-question-tags').value.trim(); const criteria = document.getElementById('add-question-criteria').value.trim(); if (!content) { showToast('请输入内容', 'error'); return; } await fetch(API + '/api/questions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content, answer, criteria, time_limit, stage, tags }) }); closeModal('modal-add-question'); refreshQuestions(); refreshStats(); showToast('添加成功', 'success'); }
         async function deleteQuestion(id) { if (!confirm('确定删除?')) return; await fetch(API + '/api/questions/' + id, { method: 'DELETE' }); refreshQuestions(); refreshStats(); }
@@ -386,7 +394,55 @@ document.querySelectorAll('.tab').forEach(tab => {
     });
 });
 
-        function loadStages() { const select = document.getElementById('ai-stage'); for (const [id, info] of Object.entries(stages)) { select.innerHTML += '<option value="' + id + '">阶段' + id + ': ' + info.name + '</option>'; } }
+        async function refreshStages() {
+            try {
+                const res = await fetch(API + '/api/stages');
+                stages = await res.json();
+                // 更新AI出题的阶段下拉框
+                const select = document.getElementById('ai-stage');
+                if (select) {
+                    select.innerHTML = '<option value="">请选择阶段</option>' + stages.map(s => '<option value="' + s.id + '">' + s.name + '</option>').join('');
+                }
+                // 更新题库管理的阶段下拉框
+                const stageSelect = document.getElementById('add-question-stage');
+                if (stageSelect) {
+                    stageSelect.innerHTML = stages.map(s => '<option value="' + s.id + '">' + s.name + '</option>').join('');
+                }
+                // 更新阶段管理列表
+                const list = document.getElementById('stages-list');
+                if (list) {
+                    list.innerHTML = '<table style="width:100%;font-size:13px;"><thead><tr><th>名称</th><th>级别</th><th>操作</th></tr></thead><tbody>' + 
+                        stages.map(s => '<tr><td>' + s.name + '</td><td>' + (s.level||'-') + '</td><td><button class="btn btn-danger" onclick="deleteStage(' + s.id + ')" style="padding:3px 8px;font-size:11px;">删除</button></td></tr>').join('') + 
+                        '</tbody></table>';
+                }
+            } catch (e) { console.error('加载阶段失败', e); }
+        }
+        async function deleteStage(id) {
+            if (!confirm('确定删除？')) return;
+            await fetch(API + '/api/stages/' + id, { method: 'DELETE' });
+            refreshStages();
+            showToast('已删除', 'success');
+        }
+        async function addStage() {
+            const name = document.getElementById('add-stage-name').value.trim();
+            const tags = document.getElementById('add-stage-tags').value.trim();
+            const level = document.getElementById('add-stage-level').value.trim();
+            if (!name) { showToast('请输入阶段名称', 'error'); return; }
+            await fetch(API + '/api/stages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, tags, level })
+            });
+            closeModal('modal-add-stage');
+            refreshStages();
+            showToast('添加成功', 'success');
+        }
+        async function resetStages() {
+            if (!confirm('确定重置为默认16阶段？')) return;
+            await fetch(API + '/api/stages/reset', { method: 'POST' });
+            refreshStages();
+            showToast('已重置', 'success');
+        }
         async function generateQuestion() { const stage = parseInt(document.getElementById('ai-stage').value); const tags = document.getElementById('ai-tags').value.trim(); if (!stage) { showToast('请选择阶段', 'error'); return; } try { const res = await fetch(API + '/api/questions/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage, tags }) }); generatedQuestion = await res.json(); const html = '<strong>题目:</strong>\n' + generatedQuestion.content + '\n\n<strong>参考答案:</strong>\n' + generatedQuestion.answer + '\n\n<strong>评分要点:</strong>\n' + generatedQuestion.criteria + '\n\n<strong>建议用时:</strong> ' + generatedQuestion.time_limit + '秒'; document.getElementById('ai-question-content').innerHTML = html.replace(/\n/g, '<br>'); document.getElementById('ai-result').style.display = 'block'; } catch (e) { showToast('生成失败', 'error'); } }
         function regenerateQuestion() { generateQuestion(); }
         async function saveAIQuestion() { if (!generatedQuestion) return; await fetch(API + '/api/questions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(generatedQuestion) }); refreshQuestions(); refreshStats(); showToast('已保存到题库', 'success'); document.getElementById('ai-result').style.display = 'none'; }
